@@ -49,6 +49,7 @@ This page covers the options that most apps set directly. `CliRendererConfig` al
 | `exitSignals`         | `NodeJS.Signals[]`             | see below                        | Signals that trigger cleanup ([details](/docs/core-concepts/lifecycle#signal-handling)) |
 | `clearOnShutdown`     | `boolean`                      | `true`                           | Clear the renderer-owned region on `suspend()` and `destroy()`                          |
 | `targetFps`           | `number`                       | `30`                             | Target frames per second for the render loop                                            |
+| `unfocusedFps`        | `number`                       | unset                            | Limit continuous animation FPS while the terminal reports focus-out                     |
 | `maxFps`              | `number`                       | `60`                             | Maximum FPS cap for immediate re-renders                                                |
 | `useMouse`            | `boolean`                      | `true`                           | Enable mouse input                                                                      |
 | `autoFocus`           | `boolean`                      | `true`                           | Focus the nearest focusable renderable on left click                                    |
@@ -61,6 +62,10 @@ This page covers the options that most apps set directly. `CliRendererConfig` al
 
 You can also change `screenMode`, `footerHeight`, `externalOutputMode`, and `consoleMode` at runtime through their
 matching `renderer` properties.
+
+Set `unfocusedFps: 1` to keep continuous animations near one frame per second after a terminal focus-out report. The renderer requests focus reporting with `CSI ?1004h`, restores the normal `targetFps` on focus-in, and disables its focus reporting on suspension and shutdown. Explicit content invalidations through `requestRender()` still schedule a frame at `maxFps`, including while a slower animation frame is pending. A terminal that never reports focus-out keeps the normal rate. Timers owned by application code must separately reduce their animation updates; they are ordinary content invalidations to the renderer.
+
+`renderer.terminalFocused` exposes the last terminal focus report as `true` or `false`, or `null` before any report. This lets animation components created while the terminal is already unfocused choose their initial cadence.
 
 ## Screen modes
 

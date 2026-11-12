@@ -143,6 +143,9 @@ export interface CliRendererConfig {
   // Aim for this many frames per second in continuous mode. Defaults to 30.
   targetFps?: number
 
+  // Limit continuous animation frames after terminal focus-out; content requests keep maxFps.
+  unfocusedFps?: number
+
   // Cap immediate re-renders at this frame rate. Defaults to 60.
   maxFps?: number
 
@@ -878,6 +881,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _onDestroy?: () => void
   private themeModeState: RendererThemeMode
   private _terminalFocusState: boolean | null = null
+  private readonly unfocusedFps: number | undefined
 
   private sequenceHandlers: ((sequence: string) => boolean)[] = []
   private prependedInputHandlers: ((sequence: string) => boolean)[] = []
@@ -997,6 +1001,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.stdin = stdin
     this.stdout = stdout
+    this.unfocusedFps = config.unfocusedFps
     this._usesProcessStdout = stdout === process.stdout
     this.realStdoutWrite = stdout.write
 
@@ -1492,7 +1497,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     if (this._isRunning) {
-      if (!this.rendering && !this.renderTimeout && !this.ordinaryFrameWaitingForFeed) {
+      if (!this.rendering && !this.ordinaryFrameWaitingForFeed) {
+        if (this._terminalFocusState === false && this.unfocusedFps !== undefined && this.renderTimeout) {
+          this.clock.clearTimeout(this.renderTimeout)
+          this.renderTimeout = null
+        }
         this.scheduleRenderTimer()
       }
       return
@@ -1622,6 +1631,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   public get targetFps(): number {
     return this._targetFps
+  }
+
+  public get terminalFocused(): boolean | null {
+    return this._terminalFocusState
+  }
+
+  private get continuousFrameTime(): number {
+    if (this._terminalFocusState !== false || this.unfocusedFps === undefined) return this.targetFrameTime
+    return Math.max(this.targetFrameTime, 1000 / this.unfocusedFps)
   }
 
   public set targetFps(targetFps: number) {
@@ -3093,6 +3111,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       startupCursorCprActive,
     })
     this.lib.setupTerminal(this.rendererPtr, this._screenMode === "alternate-screen")
+    if (this.unfocusedFps !== undefined) this.writeOut("\x1b[?1004h")
     this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
 
     if (this.debugOverlay.enabled) {
@@ -3259,10 +3278,16 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       // window was unfocused.
       if (this.shouldRestoreModesOnNextFocus) {
         this.lib.restoreTerminalModes(this.rendererPtr)
+        if (this.unfocusedFps !== undefined) this.writeOut("\x1b[?1004h")
         this.shouldRestoreModesOnNextFocus = false
       }
       if (this._terminalFocusState !== true) {
         this._terminalFocusState = true
+        if (this.unfocusedFps !== undefined && this._isRunning && !this.rendering && this.renderTimeout) {
+          this.clock.clearTimeout(this.renderTimeout)
+          this.renderTimeout = null
+          this.requestRender()
+        }
         this.emit(CliRenderEvents.FOCUS)
       }
       return true
@@ -4013,6 +4038,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.themeModeState.cancelRefresh()
 
+    if (this.unfocusedFps !== undefined && this._terminalIsSetup) this.writeOut("\x1b[?1004l")
     this.lib.suspendRenderer(this.rendererPtr)
 
     if (this.stdin.setRawMode) {
@@ -4054,6 +4080,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this.suspendedNonAltSurfacePreserved = false
+
+    if (this.unfocusedFps !== undefined && this._terminalIsSetup) this.writeOut("\x1b[?1004h")
 
     this.flushPendingSplitOutputBeforeTransition(false, { allowSuspended: true, allowPassthrough: true })
 
@@ -4136,6 +4164,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private cleanupBeforeDestroy(): void {
     if (this._destroyCleanupPrepared) return
     this._destroyCleanupPrepared = true
+
+    if (this.unfocusedFps !== undefined && this._terminalIsSetup) this.writeOut("\x1b[?1004l")
 
     if (this._usesProcessStdout) {
       process.removeListener("SIGWINCH", this.sigwinchHandler)
@@ -4459,7 +4489,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           }
 
           if (this._isRunning || this.immediateRerenderRequested) {
-            const targetFrameTime = this.immediateRerenderRequested ? this.minTargetFrameTime : this.targetFrameTime
+            const targetFrameTime = this.immediateRerenderRequested ? this.minTargetFrameTime : this.continuousFrameTime
             const delay = Math.max(1, targetFrameTime - Math.floor(overallFrameTime))
             this.immediateRerenderRequested = false
             this.renderTimeout = this.clock.setTimeout(() => {
@@ -4474,7 +4504,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           const overallFrameTime = performance.now() - overallStart
 
           if (this._isRunning || this.immediateRerenderRequested) {
-            const targetFrameTime = this.immediateRerenderRequested ? this.minTargetFrameTime : this.targetFrameTime
+            const targetFrameTime = this.immediateRerenderRequested ? this.minTargetFrameTime : this.continuousFrameTime
             const delay = Math.max(1, targetFrameTime - Math.floor(overallFrameTime))
             this.immediateRerenderRequested = false
             this.renderTimeout = this.clock.setTimeout(() => {
