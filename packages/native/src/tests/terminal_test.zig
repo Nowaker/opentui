@@ -598,6 +598,41 @@ test "remote detection - auto mode ignores forwarded terminal identity after SSH
     try testing.expectEqualStrings("", term.getTerminalName());
 }
 
+test "remote detection - auto mode detects forwarded multiplexer after SSH marker" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    const cases = [_]struct { key: ?[]const u8 = null, value: []const u8 = "", term: []const u8, kind: Terminal.Multiplexer }{
+        .{ .key = "TMUX", .value = "/tmp/tmux-1000/default,12345,0", .term = "tmux-256color", .kind = .tmux },
+        .{ .term = "tmux-256color", .kind = .tmux },
+        .{ .key = "STY", .value = "12345.pts-0.host", .term = "screen", .kind = .screen },
+        .{ .term = "screen.xterm-256color", .kind = .screen },
+        .{ .key = "ZELLIJ", .value = "0", .term = "xterm-256color", .kind = .zellij },
+        .{ .term = "xterm-256color", .kind = .none },
+    };
+    for (cases) |case| {
+        var term = Terminal.init(.{ .remote_mode = .auto });
+        defer term.deinit();
+        try term.setHostEnvVar(testing.allocator, "SSH_CONNECTION", "192.0.2.1 54231 192.0.2.2 22");
+        try term.setHostEnvVar(testing.allocator, "TERM", case.term);
+        try term.setHostEnvVar(testing.allocator, "TERM_PROGRAM", "ghostty");
+        if (case.key) |key| try term.setHostEnvVar(testing.allocator, key, case.value);
+
+        var writer = TestWriter.init(testing.allocator);
+        defer writer.deinit();
+        try term.queryTerminalSend(&writer);
+        const output = writer.getWritten();
+
+        try testing.expect(term.caps.remote);
+        try testing.expectEqual(case.kind, term.multiplexer);
+        // tmux turns an unwrapped graphics APC into the pane title, and screen prints it.
+        const sends_graphics_query = case.kind != .tmux and case.kind != .screen;
+        try testing.expectEqual(sends_graphics_query, std.mem.find(u8, output, ansi.ANSI.kittyGraphicsQuery) != null);
+        // The endpoint identity keys stay behind the auto remote return.
+        try testing.expect(std.ascii.findIgnoreCase(term.getTerminalName(), "ghostty") == null);
+        try testing.expect(!term.caps.notifications);
+    }
+}
+
 test "remote detection - TERM and COLORTERM set color depth in every remote mode" {
     const cases = [_]struct { term: []const u8, colorterm: ?[]const u8 = null, ansi256: bool, rgb: bool }{
         .{ .term = "screen-256color", .ansi256 = true, .rgb = false },

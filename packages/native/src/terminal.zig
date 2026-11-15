@@ -727,38 +727,18 @@ pub fn checkEnvironmentOverrides(self: *Terminal) void {
             self.caps.ansi256 = true;
         }
     }
+    // Multiplexers export TMUX, ZELLIJ* and STY to their own panes, and a tmux* or screen* TERM means output passes
+    // through one, so these also hold in every mode. A tmux server started from an SSH login hands SSH_* to its panes;
+    // without this, tmux gets the graphics probe unwrapped and shows it as the pane title.
+    if (!self.term_info.from_xtversion) {
+        self.applyMultiplexerEnv(env_map);
+    }
     if (self.opts.remote_mode == .auto and self.remote and env_is_forwarded) {
         return;
     }
 
-    if (!self.term_info.from_xtversion) {
-        if (env_map.get("TMUX")) |_| {
-            self.multiplexer = .tmux;
-            self.caps.unicode = .wcwidth;
-            self.caps.explicit_cursor_positioning = true;
-        } else if (env_map.get("ZELLIJ") != null or env_map.get("ZELLIJ_SESSION_NAME") != null or env_map.get("ZELLIJ_PANE_ID") != null) {
-            self.multiplexer = .zellij;
-            if (self.term_info.name_len == 0) {
-                const name = "Zellij";
-                @memcpy(self.term_info.name[0..name.len], name);
-                self.term_info.name_len = name.len;
-            }
-        } else if (env_map.get("STY") != null) {
-            self.multiplexer = .screen;
-            self.skip_graphics_query = true;
-            self.caps.unicode = .wcwidth;
-            self.caps.explicit_cursor_positioning = true;
-        } else if (env_map.get("TERM")) |term| {
-            if (std.mem.startsWith(u8, term, "tmux")) {
-                self.multiplexer = .tmux;
-                self.caps.unicode = .wcwidth;
-                self.caps.explicit_cursor_positioning = true;
-            } else if (std.mem.startsWith(u8, term, "screen")) {
-                self.multiplexer = .screen;
-                self.skip_graphics_query = true;
-                self.caps.unicode = .wcwidth;
-                self.caps.explicit_cursor_positioning = true;
-            }
+    if (!self.term_info.from_xtversion and self.multiplexer != .zellij) {
+        if (env_map.get("TERM")) |term| {
             if (std.mem.find(u8, term, "alacritty") != null) {
                 self.caps.explicit_cursor_positioning = true;
             }
@@ -970,6 +950,37 @@ pub fn checkEnvironmentOverrides(self: *Terminal) void {
                     self.caps.osc52 = true;
                 }
             }
+        }
+    }
+}
+
+fn applyMultiplexerEnv(self: *Terminal, env_map: *const std.process.Environ.Map) void {
+    if (env_map.get("TMUX")) |_| {
+        self.multiplexer = .tmux;
+        self.caps.unicode = .wcwidth;
+        self.caps.explicit_cursor_positioning = true;
+    } else if (env_map.get("ZELLIJ") != null or env_map.get("ZELLIJ_SESSION_NAME") != null or env_map.get("ZELLIJ_PANE_ID") != null) {
+        self.multiplexer = .zellij;
+        if (self.term_info.name_len == 0) {
+            const name = "Zellij";
+            @memcpy(self.term_info.name[0..name.len], name);
+            self.term_info.name_len = name.len;
+        }
+    } else if (env_map.get("STY") != null) {
+        self.multiplexer = .screen;
+        self.skip_graphics_query = true;
+        self.caps.unicode = .wcwidth;
+        self.caps.explicit_cursor_positioning = true;
+    } else if (env_map.get("TERM")) |term| {
+        if (std.mem.startsWith(u8, term, "tmux")) {
+            self.multiplexer = .tmux;
+            self.caps.unicode = .wcwidth;
+            self.caps.explicit_cursor_positioning = true;
+        } else if (std.mem.startsWith(u8, term, "screen")) {
+            self.multiplexer = .screen;
+            self.skip_graphics_query = true;
+            self.caps.unicode = .wcwidth;
+            self.caps.explicit_cursor_positioning = true;
         }
     }
 }

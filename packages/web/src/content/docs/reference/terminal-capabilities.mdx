@@ -146,9 +146,11 @@ Auto-detection recognizes `SSH_CONNECTION`, `SSH_CLIENT`, `SSH_TTY`, and `MOSH_C
 session, OpenTUI applies only the color depth keys from the forwarded environment: a `TERM` that contains `256color`
 enables `ansi256`, and a `COLORTERM` of `truecolor` or `24bit` enables `rgb` and `ansi256`. These keys describe the
 remote endpoint: `sshd` takes `TERM` from the client's PTY request, and `COLORTERM` comes from the client when ssh is
-configured to send it, or from the server session itself, such as a shell rc file. OpenTUI ignores the other keys, such
-as `TERM_PROGRAM`, the multiplexer variables, and the `OPENTUI_*` overrides. On the process host, they can describe the
-wrong terminal endpoint.
+configured to send it, or from the server session itself, such as a shell rc file. OpenTUI also applies the multiplexer
+keys `TMUX`, `ZELLIJ`, `ZELLIJ_SESSION_NAME`, `ZELLIJ_PANE_ID`, `STY`, and a `TERM` that starts with `tmux` or
+`screen`. A multiplexer sets them for its own panes, so they describe the pane that receives the output, for example
+in a tmux server started from an SSH login. OpenTUI ignores the other keys, such as `TERM_PROGRAM` and the `OPENTUI_*`
+overrides. On the process host, they can describe the wrong terminal endpoint.
 
 Without `COLORTERM`, a `256color` `TERM` gives 256-color output, even in a terminal that supports truecolor. To keep
 truecolor in an SSH session, export `COLORTERM=truecolor` on the server, forward it with `SendEnv COLORTERM` on the
@@ -174,8 +176,8 @@ const renderer = await createCliRenderer({
 `forwardEnvKeys` reads the process environment, so it describes the remote endpoint only when the process runs
 inside that endpoint's session. A server with many clients passes each client's values in `environment` instead,
 for example `environment: { TERM: pty.term, COLORTERM: "truecolor" }`. These values replace forwarded values with
-the same name. When auto-detection finds an SSH login, OpenTUI applies only their color depth keys, as it does for
-forwarded values. Set `remote: true` for the other values to take effect, as `@opentui/ssh` does.
+the same name. When auto-detection finds an SSH login, OpenTUI applies only their color depth and multiplexer keys, as
+it does for forwarded values. Set `remote: true` for the other values to take effect, as `@opentui/ssh` does.
 
 Custom streams do not receive `SIGWINCH`. Call `renderer.resize(width, height)` when the remote transport reports a
 window change. Read [SSH](/docs/reference/ssh) for the full session setup.
