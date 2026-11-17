@@ -1,6 +1,9 @@
 # 01 - Kitty graphics query in the tmux pane title behind ssh
 
-Status: FILED 2026-11-15 by coordinator ses_ef8235798ffejGr4sa22eXmVNv as [anomalyco/opentui#2143](https://github.com/anomalyco/opentui/pull/2143), head `0e7aa146` on base `main` `e477ffa3`.
+Status: MERGED upstream 2026-11-16T07:49:19Z as [anomalyco/opentui#2143](https://github.com/anomalyco/opentui/pull/2143), merged by simonklee from final head `5c00007e` into `main` as `c3a007e0` ("native: detect tmux in auto-detected remote sessions (#2143)"). Filed 2026-11-15 by coordinator [ses_ef8235798ffejGr4sa22eXmVNv](https://portal.vibeterm.desktop.ts.nowaker.net/session/ses_ef8235798ffejGr4sa22eXmVNv) with head `0e7aa146` on base `main` `e477ffa3`.
+
+- Upstream releases containing `c3a007e0`: `v0.9.1` and `v0.9.2` (checked 2026-11-17 with `git tag --contains`).
+- Fork follow-up: drop fork commit `f25ffe29` at the next rebase of `main-nowaker` onto an upstream release that contains `c3a007e0` (`v0.9.1` or later). Its Zellij detection is not part of the upstream merge, so check Zellij behavior before dropping it; if it is still needed, keep only that part.
 
 - Repository and base: `anomalyco/opentui`, `main` at `e477ffa3` (#2140, after v0.9.0).
 - Head: `Nowaker:fix/remote-tmux-graphics-probe`, `0e7aa146`, one commit above the base (rebased from `212802d2` on 2026-11-15; `0c48678d..e477ffa3` touches none of its three files).
